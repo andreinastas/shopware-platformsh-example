@@ -101,3 +101,5 @@ hooks:
     fi;
     cd /app
     php fixer.php
+    cd /app/shopware/build
+    ant build-cache-dir
