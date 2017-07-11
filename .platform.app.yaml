@@ -1,0 +1,103 @@
+# This file describes an application. You can have multiple applications
+# in the same project.
+
+# The name of this app. Must be unique within a project.
+name: app
+
+# The type of the application to build.
+type: php:7.0
+build:
+  flavor: composer
+
+runtime:
+    extensions:
+        - redis
+        - xdebug
+
+# The relationships of the application with services or other applications.
+# The left-hand side is the name of the relationship as it will be exposed
+# to the application in the PLATFORM_RELATIONSHIPS variable. The right-hand
+# side is in the form `<service name>:<endpoint name>`.
+relationships:
+    database: 'mysqldb:mysql'
+    redis: 'rediscache:redis'
+
+# The configuration of app when it is exposed to the web.
+web:
+    locations:
+      '/':
+        # The public directory of the app, relative to its root.
+        # check if web convention
+        root: 'shopware'
+        passthru: '/shopware.php'
+        index:
+          - 'shopware.php'
+        allow: true
+        scripts: true
+        # rules:
+        #   # Allow access to common static files.
+        #   '\.(jpe?g|png|gif|svgz?|css|js|map|ico|bmp|eot|woff2?|otf|ttf)$':
+        #     allow: true
+        #   '^/robots\.txt$':
+        #     allow: true
+        #   '^/sitemap\.xml$':
+        #     allow: true
+
+# The size of the persistent disk of the application (in MB).
+disk: 2048
+
+# The mounts that will be performed when the package is deployed.
+mounts:
+  "persistent/": "shared:files/persistent"
+  "shopware/var/": "shared:files/var"
+  "shopware/web/": "shared:files/web"
+  "shopware/files/": "shared:files/files"
+  "shopware/media/": "shared:files/media"
+  "shopware/engine/Shopware/Plugins/Community/": "shared:files/communityplugin"
+
+  # The hooks that will be performed when the package is deployed.
+hooks:
+  build: |
+    set -e
+    sed -i "s/__HOST__/$SHOPWARE_DOMAIN/" build.properties
+    cp build.properties shopware/build/
+    cp config.php shopware/
+    cd shopware
+    ln -fs ../../../../persistent/install.lock recovery/install/data/install.lock
+    composer install
+
+  deploy: |
+    set -e
+    if [ ! -f /app/persistent/installed ]; then
+    cd shopware
+    # mounted volumes here, fix them folders
+    mkdir -p var/cache
+    mkdir -p var/log
+    mkdir -p web/cache
+    mkdir -p files/documents
+    mkdir -p files/downloads
+    mkdir -p media/archive
+    mkdir -p media/image/thumbnail
+    mkdir -p media/music
+    mkdir -p media/pdf
+    mkdir -p media/temp
+    mkdir -p media/unknown
+    mkdir -p media/vector
+    mkdir -p media/video
+    mkdir -p engine/Shopware/Plugins/Community/Backend
+    mkdir -p engine/Shopware/Plugins/Community/Core
+    mkdir -p engine/Shopware/Plugins/Community/Frontend
+    cd build
+    ant build-database
+    ant build-snippets-deploy
+    ant build-theme-initialize
+    ant build-create-admin-account
+    ant build-install-lock-file
+    ant build-disable-firstrunwizard
+    cd ../var/cache
+    wget -O test_images.zip http://releases.s3.shopware.com/test_images.zip
+    unzip -o test_images.zip -d ../../
+    touch /app/persistent/installed
+    fi;
+    cd /app
+    php fixer.php
